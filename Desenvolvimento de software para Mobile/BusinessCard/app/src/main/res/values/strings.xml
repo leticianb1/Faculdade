@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">BusinessCard</string>
+
+    <string name="business_card_title">Cartão de visitas</string>
+    <string name="action_settings">Settings</string>
+    <string name="business_card_image_description">Person of business card description</string>
+    <string name="business_card_name">Bruno Soares da Silva</string>
+    <string name="business_card_description">Estudante do sétimo período de Engenharia de Software do Instituto de Informática da UFG. Membro do grupo de pesquisa LABORA.</string>
+</resources>
