@@ -1,0 +1,81 @@
+public OrdemServico calcularPrecoBrutoItens(OrdemServico ordemServico, List<TabelaPrecoItem> tabelaPrecoItens) {
+		ordemServico.setTotalBrutoServico(BigDecimal.ZERO);
+		ordemServico.setTotalBrutoProduto(BigDecimal.ZERO);
+		ordemServico.setTotalBrutoGeral(BigDecimal.ZERO);
+		
+		HashMap<Long, BigDecimal> itensPrecoBruto = new HashMap<Long, BigDecimal>();
+		
+		for (TabelaPrecoItem tabelaPrecoItem : tabelaPrecoItens) {
+			
+			Boolean promocaoValida = promocaoValida(tabelaPrecoItem.getTabelaPreco());
+			if (tabelaPrecoItem.getPromocao().equals("*") && promocaoValida == false) {
+				itensPrecoBruto.put(tabelaPrecoItem.getServicoProduto().getId(), tabelaPrecoItem.getPrecoSemPromocao());
+			} else {
+				itensPrecoBruto.put(tabelaPrecoItem.getServicoProduto().getId(), tabelaPrecoItem.getPrecoBruto());
+			}
+			
+		}
+		
+		List<ItemOrdemServico> itensOS = obterItensOS(ordemServico);
+		for (ItemOrdemServico itemOS : itensOS) {
+			BigDecimal valorUnidadeBruto;
+			
+			if (itemOS instanceof ServicoOrdemServico) {
+				ServicoOrdemServico servicoOrdemServico = (ServicoOrdemServico) itemOS;
+				if (servicoOrdemServico.getQuantidade() <= 0 ) {
+					servicoOrdemServico.setQuantidade(1);
+				}
+				
+				if (servicoOrdemServico.getValorUnidadeBruto().equals(BigDecimal.ZERO)) {
+					valorUnidadeBruto = itensPrecoBruto.get(servicoOrdemServico.getServico().getId());
+				} else {
+					valorUnidadeBruto = itemOS.getValorUnidadeBruto();
+				}
+				servicoOrdemServico.setValorUnidadeBruto(truncarDuasCasasDecimais(valorUnidadeBruto));
+				servicoOrdemServico.setValorTotalBruto(servicoOrdemServico.getValorUnidadeBruto().multiply(new BigDecimal(servicoOrdemServico.getQuantidade())));
+				itemOS = servicoOrdemServico;
+				ordemServico.setTotalBrutoServico(ordemServico.getTotalBrutoServico().add(itemOS.getValorTotalBruto()));
+			} else if (itemOS instanceof ProdutoOrdemServico) {
+				ProdutoOrdemServico produtoOrdemServico = (ProdutoOrdemServico) itemOS;
+				//produtoDao.atualizar(produtoOrdemServico.getProduto());
+				
+				if (produtoOrdemServico.getIdNotaEntrada() != null && produtoOrdemServico.getIdNotaEntrada() > 0) {
+					ordemServico.setTotalBrutoProduto(ordemServico.getTotalBrutoProduto().add(produtoOrdemServico.getValorTotalBruto()));
+					continue;
+				}
+				if (produtoOrdemServico.getQuantidade().compareTo(BigDecimal.ZERO) <= 0) {
+					if (produtoOrdemServico.getProduto().getMultiplo().equals("S")) {
+						produtoOrdemServico.setQuantidade(produtoOrdemServico.getProduto().getMultiplicadorQuantidade());
+					} else {
+						produtoOrdemServico.setQuantidade(BigDecimal.ONE);
+					}
+				}
+				
+				BigDecimal quantidade = produtoOrdemServico.getQuantidade().multiply(BigDecimal.TEN.pow(produtoOrdemServico.getProduto().getNumeroCasasDecimais()));
+				
+				produtoOrdemServico.setQuantidade(new BigDecimal(quantidade.intValue()).divide(BigDecimal.TEN.pow(produtoOrdemServico.getProduto().getNumeroCasasDecimais())));
+				produtoOrdemServico.setIsEquivalente(produtoEquivalenteDao.possuiEquivalencia(produtoOrdemServico.getProduto()));
+				produtoOrdemServico.setPossuiEquivalente(produtoEquivalenteDao.possuiEquivalente(produtoOrdemServico.getProduto()));
+				if (produtoOrdemServico.getIsEquivalente() && produtoOrdemServico.getProduto().getDataUltimaCompra().isAfter(tabelaPrecoItens.get(0).getDataGeracao())) {
+					throw new CalculoOrdemServicoException("Data última compra superior a data fechamento lista. Contatar setor preços matriz!");
+				} else if (ordemServico.getLicitacao() == true && produtoOrdemServico.getValorUnidadeBrutoAlterado() == true) { 
+					valorUnidadeBruto = produtoOrdemServico.getValorUnidadeBruto();
+				} else {
+					valorUnidadeBruto = itensPrecoBruto.get(produtoOrdemServico.getProduto().getId());
+					produtoOrdemServico.setValorUnidadeBrutoAlterado(false);
+				}
+				produtoOrdemServico.setValorUnidadeBruto(valorUnidadeBruto);
+				if (valorUnidadeBruto.compareTo(BigDecimal.ZERO) <= 0) {
+					throw new CalculoOrdemServicoException("Produto com valor zerado na tabela de preços!");
+				}
+				if (produtoOrdemServico.getValorUnidadeBrutoAlterado() == false) {
+					produtoOrdemServico.setValorUnidadeBruto(truncarDuasCasasDecimais(produtoOrdemServico.getValorUnidadeBruto().add(aplicarPrecoDiferenciado(produtoOrdemServico, produtoOrdemServico.getValorUnidadeBruto()))));
+				}
+				produtoOrdemServico.setValorTotalBruto(produtoOrdemServico.getQuantidade().multiply(produtoOrdemServico.getValorUnidadeBruto()));
+				itemOS = produtoOrdemServico;
+				ordemServico.setTotalBrutoProduto(ordemServico.getTotalBrutoProduto().add(itemOS.getValorTotalBruto()));
+			}
+			
+		}
+		return ordemServico;
+	}
